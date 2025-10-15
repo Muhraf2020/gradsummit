@@ -1,0 +1,37 @@
+name: Generate sitemap
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # optional: run every Monday 03:00 UTC
+
+permissions:
+  contents: write          # needed so the action can commit sitemap.xml
+
+jobs:
+  build-sitemap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install deps (if needed)
+        run: |
+          if [ -f tools/requirements.txt ]; then pip install -r tools/requirements.txt; fi
+
+      - name: Generate sitemap
+        run: python3 tools/generate_sitemap.py
+
+      - name: Assert sitemap produced
+        run: test -s sitemap.xml
+
+      - name: Commit sitemap.xml
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update sitemap.xml"
+          file_pattern: sitemap.xml 
