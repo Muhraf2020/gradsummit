@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.mastermytheses.com/sitemap.xml
+Sitemap: https://www.gradsummit.com/sitemap.xml
