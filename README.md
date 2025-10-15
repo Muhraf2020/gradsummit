@@ -1,0 +1,1 @@
+Static site for Mastering Research series. Replace YOUR-DOMAIN and deploy via GitHub Actions.
