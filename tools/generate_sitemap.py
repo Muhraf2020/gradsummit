@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Generate sitemap.xml listing all .html files with <loc> and <lastmod>.
-- Domain taken from env SITE_DOMAIN (e.g., https://www.mastermytheses.com), or default below.
+- Domain taken from env SITE_DOMAIN (e.g., https://www.gradsummit.com), or default below.
 - lastmod prefers last Git commit time; falls back to filesystem mtime.
 - Skips hidden folders, .github, node_modules. Skips root 404.html.
 """
@@ -14,7 +14,7 @@ from urllib.parse import urljoin
 ROOT = Path(__file__).resolve().parent.parent
 
 # Change default if you want, or set SITE_DOMAIN in the GitHub Action
-DOMAIN = os.environ.get("SITE_DOMAIN", "https://www.mastermytheses.com").rstrip("/") + "/"
+DOMAIN = os.environ.get("SITE_DOMAIN", "https://www.gradsummit.com").rstrip("/") + "/"
 
 def is_ignored(p: Path) -> bool:
     parts = p.parts
