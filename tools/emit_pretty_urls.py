@@ -10,9 +10,11 @@ SITE = os.environ.get("SITE_DOMAIN", "https://www.gradsummit.com").rstrip("/")
 
 def ignore(p: Path) -> bool:
     rel = p.relative_to(ROOT).as_posix()
-    if rel == "404.html":            # keep GitHub Pages 404 at /404.html
+    if rel == "404.html":                      # keep GitHub Pages 404 at /404.html
         return True
-    if p.name == "index.html":       # skip any existing index.html
+    if rel.startswith(("partials/", ".github/")):  # NEW: never emit partials or CI
+        return True
+    if p.name == "index.html":                 # skip any existing index.html
         return True
     return False
 
@@ -66,11 +68,18 @@ def _fix_canonical_og_and_meta_images(html: str, pretty_url: str) -> str:
     return html
 
 def _rewrite_absolute_html_links(html: str) -> str:
-    # /index.html -> / ;  /foo.html -> /foo/
+    # /index or /index/ -> /
+    html = re.sub(
+        r'href=(["\'])/index/?(#[^"\']*)?\1',
+        lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
+        html, flags=re.I
+    )
+    # /index.html -> /
     html = re.sub(
         r'href=(["\'])/index\.html(#[^"\']*)?\1',
         lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
         html, flags=re.I)
+    # /foo.html -> /foo/
     html = re.sub(
         r'href=(["\'])/([^"\']+?)\.html(#[^"\']*)?\1',
         lambda m: f'href={m.group(1)}/{m.group(2)}/{m.group(3) or ""}{m.group(1)}',
@@ -196,6 +205,12 @@ def main():
         # /index.html -> /
         s = re.sub(
             r'href=(["\'])/index\.html(#[^"\']*)?\1',
+            lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
+            s, flags=re.I
+        )
+        # /index or /index/ -> /
+        s = re.sub(
+            r'href=(["\'])/index/?(#[^"\']*)?\1',
             lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
             s, flags=re.I
         )
