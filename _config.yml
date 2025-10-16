@@ -1,0 +1,8 @@
+# _config.yml
+permalink: pretty        # /about/ instead of /about.html
+url: https://www.gradsummit.com
+
+# No theme, no layouts
+plugins:
+  - jekyll-redirect-from   # preserves your old .html links
+  - jekyll-sitemap         # auto-generates /sitemap.xml
