@@ -3,6 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [ main ]
+  workflow_dispatch: {}   # <-- enables the "Run workflow" button in Actions
 
 permissions:
   contents: read
