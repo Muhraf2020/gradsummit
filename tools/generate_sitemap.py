@@ -2,19 +2,22 @@
 """
 Generate sitemap.xml with pretty slash URLs only.
 - Includes home (/), /about/, and /books/<slug>/, etc. — NO .html entries.
-- lastmod uses the git timestamp of the ORIGINAL source page (about.html, books/<slug>.html),
-  falling back to the current index.html mtime when needed.
+- lastmod prefers the git timestamp of the ORIGINAL source page (about.html, books/<slug>.html),
+  falling back to the current index.html mtime when needed (both normalized to UTC Z).
 - Adds <image:image> entries from <meta property="og:image"> and the first <img> tags.
+- Excludes non-public areas like /partials/, /.github/, /tools/.
 """
 
 from __future__ import annotations
 import os, re, subprocess
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parent.parent
 SITE = os.environ.get("SITE_DOMAIN", "https://www.gradsummit.com").rstrip("/")
+
+# Skip any generated/non-public directories
+SKIP_PREFIXES = ("partials/", ".github/", "tools/")
 
 # -------- helpers --------
 
@@ -39,30 +42,38 @@ def source_html_for_index(pretty_index: Path) -> Path | None:
     try:
         parent = pretty_index.parent
         src = parent.with_suffix(".html")  # replaces last folder with .html
-        # e.g., Path('.../about/index.html').parent = '.../about'
-        #       -> '.../about.html'
-        if (src.exists()):
+        if src.exists():
             return src
-        # fallback: try root if mapping failed
         return None
     except Exception:
         return None
 
-def git_last_commit_iso(p: Path) -> str | None:
-    """Return last commit date in ISO-8601 from git; None if not tracked."""
+def normalize_iso_z(dt_str: str) -> str:
+    """
+    Normalize any ISO-8601 string to UTC '...Z' format.
+    Accepts '...+00:00', already-'Z', or other offsets.
+    """
+    try:
+        dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        return dt_str
+
+def git_last_commit_iso_z(p: Path) -> str | None:
+    """Return last commit date in ISO-8601 Z from git; None if not tracked."""
     try:
         out = subprocess.check_output(
             ["git", "log", "-1", "--format=%cI", "--", str(p)],
             cwd=str(ROOT),
             text=True
         ).strip()
-        return out or None
+        return normalize_iso_z(out) if out else None
     except Exception:
         return None
 
-def fs_mtime_iso(p: Path) -> str:
+def fs_mtime_iso_z(p: Path) -> str:
     t = datetime.fromtimestamp(p.stat().st_mtime, tz=timezone.utc)
-    return t.isoformat(timespec="seconds")
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 # very light HTML sniffers (fast, regex-based)
 META_OG_IMAGE = re.compile(
@@ -78,7 +89,7 @@ def to_abs_url(u: str) -> str:
     # make root-absolute into full URL
     if u.startswith("/"):
         return SITE + u
-    # otherwise treat as relative to root
+    # otherwise treat as relative to root (pretty emitter should have normalized assets already)
     return SITE + "/" + u.lstrip("./")
 
 def find_images_in(pretty_html_path: Path, limit: int = 3) -> list[str]:
@@ -97,11 +108,10 @@ def find_images_in(pretty_html_path: Path, limit: int = 3) -> list[str]:
         if len(imgs) >= limit:
             break
 
-    # normalize to absolute full URLs
+    # normalize to absolute full URLs & de-dup
     out: list[str] = []
     for u in imgs:
         out.append(to_abs_url(u))
-    # de-dup preserving order
     seen = set()
     uniq = []
     for u in out:
@@ -117,11 +127,15 @@ def main():
     entries = []
 
     for idx in sorted(indexes):
+        rel = idx.relative_to(ROOT).as_posix()
+        if any(rel.startswith(pref) for pref in SKIP_PREFIXES):
+            continue
+
         loc = pretty_url_for_index(idx)
 
         # Prefer git time of the SOURCE html (about.html, books/foo.html)
         src = source_html_for_index(idx)
-        lastmod = (git_last_commit_iso(src) if src else None) or fs_mtime_iso(idx)
+        lastmod = (git_last_commit_iso_z(src) if src else None) or fs_mtime_iso_z(idx)
 
         images = find_images_in(idx, limit=3)
 
@@ -130,6 +144,11 @@ def main():
             "lastmod": lastmod,
             "images": images,
         })
+
+    # Guardrail: ensure we didn't include non-public paths
+    bad = [e["loc"] for e in entries if any("/" + pref in e["loc"] for pref in SKIP_PREFIXES)]
+    if bad:
+        raise SystemExit(f"sitemap contains non-public URLs: {bad[:3]}")
 
     # Write XML
     lines = [
@@ -141,7 +160,6 @@ def main():
         lines.append("  <url>")
         lines.append(f"    <loc>{e['loc']}</loc>")
         lines.append(f"    <lastmod>{e['lastmod']}</lastmod>")
-        # optional: light heuristics
         # homepage gets a touch higher priority/changefreq
         if e['loc'].rstrip("/") == SITE:
             lines.append("    <changefreq>weekly</changefreq>")
