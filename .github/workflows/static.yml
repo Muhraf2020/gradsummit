@@ -4,7 +4,7 @@ name: Deploy static content to Pages
 on:
   push:
     branches: ["main"]
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -35,13 +35,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Emit pretty URLs (index.html folders + redirect stubs)
-        run: |
-          python3 tools/emit_pretty_urls.py
+      # (optional) catch syntax errors early
+      - name: Lint Python (compile)
+        run: python3 -m py_compile tools/inject_nav.py tools/emit_pretty_urls.py tools/generate_sitemap.py
 
+      # NEW: inject the shared nav (adds "AI Tools Directory" + normalizes brand link)
+      - name: Inject shared nav
+        run: python3 tools/inject_nav.py
+
+      # Emit pretty URLs after nav injection
+      - name: Emit pretty URLs (index.html folders + redirect stubs)
+        run: python3 tools/emit_pretty_urls.py
+
+      # Build sitemap from the emitted pretty pages
       - name: Generate sitemap.xml (pretty URLs)
-        run: |
-          python3 tools/generate_sitemap.py
+        run: python3 tools/generate_sitemap.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
