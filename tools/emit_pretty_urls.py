@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# tools/emit_pretty_urls.py
+# tools/emit_pretty_urls.py — image-safe pretty URLs
+
 import os, re
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
@@ -9,10 +10,9 @@ SITE = os.environ.get("SITE_DOMAIN", "https://www.gradsummit.com").rstrip("/")
 
 def ignore(p: Path) -> bool:
     rel = p.relative_to(ROOT).as_posix()
-    # keep 404.html and any existing index.html files as-is
-    if rel == "404.html":
+    if rel == "404.html":            # keep GitHub Pages 404 at /404.html
         return True
-    if p.name == "index.html":
+    if p.name == "index.html":       # skip any existing index.html
         return True
     return False
 
@@ -28,89 +28,136 @@ def pretty_url_for_index(pretty_index: Path) -> str:
         return SITE + "/" + rel[:-len("index.html")]
     return SITE + "/" + rel
 
-# --- helpers to normalize attributes in the pretty copy ---
+# ---------- URL helpers ----------
 
-def _absolutize_assets(html: str) -> str:
-    # Convert href/src that point to assets/... into root-absolute /assets/...
-    # Matches href="assets/..."; href="./assets/..."; href="../assets/..."
-    def repl(m):
-        attr = m.group('attr')
-        q = m.group('q')
-        url = m.group('url')
-        # Strip leading ./ or ../ segments until we reach assets/
-        idx = url.lower().find("assets/")
-        if idx == -1:
-            return m.group(0)
-        fixed = "/" + url[idx:]  # ensure root-absolute /assets/...
-        return f'{attr}={q}{fixed}{q}'
+PROTO_RE = re.compile(r'^(?:https?:|mailto:|tel:|data:|blob:|#|/)', re.I)
 
-    pattern = r'(?P<attr>(?:href|src))=(?P<q>["\'])(?P<url>(?:\./|\.\./)*assets/[^"\']+)(?P=q)'
-    return re.sub(pattern, repl, html, flags=re.IGNORECASE)
-
-def _rewrite_absolute_html_links(html: str) -> str:
-    # /foo.html -> /foo/   and  /index.html#x -> /#x
-    html = re.sub(
-        r'href=(["\"])/index\.html(#[^"\']*)?\1',
-        lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
-        html, flags=re.IGNORECASE)
-    html = re.sub(
-        r'href=(["\"])/([^"\']+?)\.html(#[^"\']*)?\1',
-        lambda m: f'href={m.group(1)}/{m.group(2)}/{m.group(3) or ""}{m.group(1)}',
-        html, flags=re.IGNORECASE)
-    return html
-
-def _rewrite_relative_html_links(html: str, page_web_path: str) -> str:
+def _resolve_to_root_absolute(rel_url: str, base_dir: str) -> str:
     """
-    Convert relative .html links (e.g., "about.html", "../about.html",
-    "qda-with-xxx.html") into absolute slash URLs by resolving against
-    the original page directory (NOT the pretty subfolder).
+    Resolve rel_url against site root + base_dir, return a root-absolute path /...
     """
-    base_dir = page_web_path.rsplit("/", 1)[0] + "/"  # e.g., "/books/"
-    # Match href="<relative>.html" that does NOT start with http(s), mailto, tel, #, or /
-    pattern = r'href=(["\'])(?!https?:|mailto:|tel:|#|/)([^"\']+?\.html)(#[^"\']*)?\1'
+    absolute = urljoin(SITE + base_dir, rel_url)
+    path = urlparse(absolute).path
+    return path if path.startswith("/") else "/" + path
 
-    def repl(m):
-        q, rel_url, anchor = m.group(1), m.group(2), m.group(3) or ""
-        # Resolve relative against the original page directory (under the site root)
-        resolved = urljoin(SITE + base_dir, rel_url)
-        path = urlparse(resolved).path  # "/books/qda-with-xx.html" or "/about.html" etc.
+# ---------- Rewriters for the pretty copy ----------
 
-        # Normalize index.html and .html -> slash
-        if path.endswith("/index.html"):
-            pretty_path = path[:-len("index.html")]
-        elif path.endswith(".html"):
-            pretty_path = path[:-len(".html")] + "/"
-        else:
-            pretty_path = path
-
-        return f'href={q}{pretty_path}{anchor}{q}'
-
-    return re.sub(pattern, repl, html, flags=re.IGNORECASE)
-
-def _fix_canonical_and_og(html: str, pretty_url: str) -> str:
+def _fix_canonical_og_and_meta_images(html: str, pretty_url: str) -> str:
     # canonical
     html = re.sub(
         r'(<link\s+rel=["\']canonical["\']\s+href=["\'])([^"\']+)(["\'])',
         lambda m: m.group(1) + pretty_url + m.group(3),
-        html, flags=re.IGNORECASE)
+        html, flags=re.I)
     # og:url
     html = re.sub(
         r'(<meta\s+property=["\']og:url["\']\s+content=["\'])([^"\']+)(["\'])',
         lambda m: m.group(1) + pretty_url + m.group(3),
-        html, flags=re.IGNORECASE)
-    # Any absolute content=.../something.html -> .../something/
-    dom = re.escape(SITE)
+        html, flags=re.I)
+    # og:image / twitter:image -> absolute FULL URL
+    def _imgmeta(attr):
+        return re.sub(
+            rf'(<meta\s+(?:property|name)=["\']{attr}["\']\s+content=["\'])([^"\']+)(["\'])',
+            lambda m: m.group(1) + (
+                m.group(2) if PROTO_RE.match(m.group(2))
+                else SITE + _resolve_to_root_absolute(m.group(2), "/")
+            ) + m.group(3),
+            html, flags=re.I)
+    html = _imgmeta(r'(?:og:image|twitter:image)')
+    return html
+
+def _rewrite_absolute_html_links(html: str) -> str:
+    # /index.html -> / ;  /foo.html -> /foo/
     html = re.sub(
-        r'content=(["\"])'+dom+r'/([^"\']+?)\.html(#[^"\']*)?(\1)',
-        lambda m: f'content={m.group(1)}{SITE}/{m.group(2)}/{m.group(3) or ""}{m.group(4)}',
-        html, flags=re.IGNORECASE)
+        r'href=(["\'])/index\.html(#[^"\']*)?\1',
+        lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
+        html, flags=re.I)
+    html = re.sub(
+        r'href=(["\'])/([^"\']+?)\.html(#[^"\']*)?\1',
+        lambda m: f'href={m.group(1)}/{m.group(2)}/{m.group(3) or ""}{m.group(1)}',
+        html, flags=re.I)
+    return html
+
+def _rewrite_relative_html_links(html: str, base_dir: str) -> str:
+    """
+    Turn relative HREFs ending with .html into pretty absolute slash URLs,
+    resolved against the ORIGINAL PAGE directory (e.g., /books/).
+    """
+    pattern = r'href=(["\'])(?!https?:|mailto:|tel:|#|/)([^"\']+?\.html)(#[^"\']*)?\1'
+    def repl(m):
+        q, rel_url, anchor = m.group(1), m.group(2), m.group(3) or ""
+        resolved_path = _resolve_to_root_absolute(rel_url, base_dir)
+        # /x/index.html -> /x/ ; /x.html -> /x/
+        if resolved_path.endswith("/index.html"):
+            pretty_path = resolved_path[:-len("index.html")]
+        elif resolved_path.endswith(".html"):
+            pretty_path = resolved_path[:-len(".html")] + "/"
+        else:
+            pretty_path = resolved_path
+        return f'href={q}{pretty_path}{anchor}{q}'
+    return re.sub(pattern, repl, html, flags=re.I)
+
+def _rewrite_relative_assets(html: str, base_dir: str) -> str:
+    """
+    Resolve relative asset URLs (img/video/link/etc) to root-absolute:
+    - src, data-src, poster, href (non-HTML targets), preload as, etc.
+    Excludes protocols, data:, blob:, #, and '/'-rooted.
+    """
+    # 1) src/href/poster/data-src (single URL)
+    pattern = r'(?P<attr>src|href|poster|data-src)=(?P<q>["\'])(?P<url>(?!https?:|mailto:|tel:|data:|blob:|#|/)[^"\']+)(?P=q)'
+    def repl(m):
+        attr, q, url = m.group('attr'), m.group('q'), m.group('url')
+        # skip .html here; those were (or will be) handled elsewhere
+        if url.lower().endswith('.html'):
+            return m.group(0)
+        fixed = _resolve_to_root_absolute(url, base_dir)
+        return f'{attr}={q}{fixed}{q}'
+    html = re.sub(pattern, repl, html, flags=re.I)
+
+    # 2) srcset/data-srcset (multiple URLs with descriptors)
+    def fix_srcset_val(val: str) -> str:
+        parts = [p.strip() for p in val.split(",") if p.strip()]
+        fixed_parts = []
+        for p in parts:
+            # split first whitespace into url + rest (descriptor)
+            if " " in p:
+                url, desc = p.split(" ", 1)
+            else:
+                url, desc = p, ""
+            if not PROTO_RE.match(url):
+                url = _resolve_to_root_absolute(url, base_dir)
+            fixed_parts.append((url + (" " + desc if desc else "")).strip())
+        return ", ".join(fixed_parts)
+
+    pattern_set = r'(?P<attr>srcset|data-srcset)=(?P<q>["\'])(?P<val>[^"\']+)(?P=q)'
+    def repl_set(m):
+        return f'{m.group("attr")}={m.group("q")}{fix_srcset_val(m.group("val"))}{m.group("q")}'
+    html = re.sub(pattern_set, repl_set, html, flags=re.I)
+
+    # 3) Inline CSS url(...) inside style=""
+    def fix_style(style_val: str) -> str:
+        def repl_url(m):
+            q = m.group('q') or ''
+            url = m.group('url')
+            if PROTO_RE.match(url):
+                return m.group(0)
+            fixed = _resolve_to_root_absolute(url, base_dir)
+            return f'url({q}{fixed}{q})'
+        return re.sub(r'url\((?P<q>["\']?)(?P<url>[^)\'"]+)(?P=q)\)', repl_url, style_val, flags=re.I)
+
+    def style_repl(m):
+        q, val = m.group(1), m.group(2)
+        return f'style={q}{fix_style(val)}{q}'
+
+    html = re.sub(r'style=(["\'])([^"\']*)(\1)', style_repl, html, flags=re.I)
     return html
 
 def rewrite_document_for_pretty(html: str, pretty_url: str, page_web_path: str) -> str:
-    html = _fix_canonical_and_og(html, pretty_url)
-    html = _absolutize_assets(html)             # make assets root-absolute
-    html = _rewrite_absolute_html_links(html)   # /foo.html -> /foo/
-    html = _rewrite_relative_html_links(html, page_web_path)  # ../foo.html -> /foo/
+    # base_dir like "/books/" for "/books/slug.html"
+    base_dir = page_web_path.rsplit("/", 1)[0] + "/"
+    html = _fix_canonical_og_and_meta_images(html, pretty_url)
+    html = _rewrite_absolute_html_links(html)             # /foo.html -> /foo/
+    html = _rewrite_relative_html_links(html, base_dir)   # ../foo.html -> /foo/
+    html = _rewrite_relative_assets(html, base_dir)       # fix img/srcset/style urls
     return html
 
 REDIRECT_STUB = """<!doctype html><meta charset="utf-8">
@@ -124,7 +171,7 @@ def main():
     html_files = [p for p in ROOT.rglob("*.html")]
     changed = []
     for p in html_files:
-        if ignore(p):  # skip root 404.html and any index.html
+        if ignore(p):
             continue
 
         pretty_index = to_pretty_index(p)
@@ -132,12 +179,12 @@ def main():
 
         raw = p.read_text(encoding="utf-8", errors="ignore")
         pretty_url = pretty_url_for_index(pretty_index)
-        page_web_path = "/" + p.relative_to(ROOT).as_posix()  # e.g., "/about.html"
+        page_web_path = "/" + p.relative_to(ROOT).as_posix()  # e.g., "/books/slug.html"
 
         pretty_html = rewrite_document_for_pretty(raw, pretty_url, page_web_path)
         pretty_index.write_text(pretty_html, encoding="utf-8")
 
-        # Overwrite the original .html with an instant redirect stub
+        # Overwrite original .html with an instant redirect stub
         p.write_text(REDIRECT_STUB.format(to=pretty_url), encoding="utf-8")
 
         changed.append((p.relative_to(ROOT).as_posix(), pretty_index.relative_to(ROOT).as_posix()))
