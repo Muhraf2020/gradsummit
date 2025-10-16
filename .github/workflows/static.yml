@@ -1,3 +1,26 @@
+# inside jobs.build.steps, after "Checkout"
+- name: Setup Python
+  uses: actions/setup-python@v5
+  with:
+    python-version: '3.11'
+
+- name: Emit pretty URLs (index.html folders + redirect stubs)
+  env:
+    SITE_DOMAIN: https://www.gradsummit.com
+  run: |
+    python3 tools/emit_pretty_urls.py
+
+# Keep your existing sitemap step, but ensure it runs AFTER pretty URLs
+- name: Generate sitemap.xml (pretty URLs)
+  env:
+    SITE_DOMAIN: https://www.gradsummit.com
+  run: |
+    python3 tools/generate_sitemap.py
+
+# then your existing "Upload artifact" step
+
+
+
 # Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
