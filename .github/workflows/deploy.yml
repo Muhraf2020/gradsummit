@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [ main ]
-  workflow_dispatch: {}   # <-- enables the "Run workflow" button in Actions
+  workflow_dispatch: {}   # enables "Run workflow" in Actions
 
 permissions:
   contents: read
@@ -17,6 +17,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SITE_DOMAIN: https://www.gradsummit.com   # used by both scripts
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,17 +31,21 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Emit pretty URLs (index.html folders + redirect stubs)
-        env:
-          SITE_DOMAIN: https://www.gradsummit.com
-        run: |
-          python3 tools/emit_pretty_urls.py
+      # (optional) quick syntax check to catch indentation / typos early
+      - name: Lint Python (compile)
+        run: python3 -m py_compile tools/inject_nav.py tools/emit_pretty_urls.py tools/generate_sitemap.py
 
+      # NEW: inject shared nav into all HTML (adds "AI Tools Directory" etc.)
+      - name: Inject shared nav
+        run: python3 tools/inject_nav.py
+
+      # Emit pretty URLs after nav is injected
+      - name: Emit pretty URLs (index.html folders + redirect stubs)
+        run: python3 tools/emit_pretty_urls.py
+
+      # Build sitemap from the emitted pretty pages
       - name: Generate sitemap.xml (pretty URLs)
-        env:
-          SITE_DOMAIN: https://www.gradsummit.com
-        run: |
-          python3 tools/generate_sitemap.py
+        run: python3 tools/generate_sitemap.py
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
