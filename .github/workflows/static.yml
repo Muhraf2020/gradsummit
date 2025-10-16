@@ -1,66 +1,53 @@
-# inside jobs.build.steps, after "Checkout"
-- name: Setup Python
-  uses: actions/setup-python@v5
-  with:
-    python-version: '3.11'
-
-- name: Emit pretty URLs (index.html folders + redirect stubs)
-  env:
-    SITE_DOMAIN: https://www.gradsummit.com
-  run: |
-    python3 tools/emit_pretty_urls.py
-
-# Keep your existing sitemap step, but ensure it runs AFTER pretty URLs
-- name: Generate sitemap.xml (pretty URLs)
-  env:
-    SITE_DOMAIN: https://www.gradsummit.com
-  run: |
-    python3 tools/generate_sitemap.py
-
-# then your existing "Upload artifact" step
-
-
-
 # Simple workflow for deploying static content to GitHub Pages
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
-  # Single deploy job since we're just deploying
   deploy:
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
+    env:
+      SITE_DOMAIN: https://www.gradsummit.com
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Emit pretty URLs (index.html folders + redirect stubs)
+        run: |
+          python3 tools/emit_pretty_urls.py
+
+      - name: Generate sitemap.xml (pretty URLs)
+        run: |
+          python3 tools/generate_sitemap.py
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          path: .
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
