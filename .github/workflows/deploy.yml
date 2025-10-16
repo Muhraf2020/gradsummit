@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      SITE_DOMAIN: https://www.gradsummit.com   # used by both scripts
+      SITE_DOMAIN: https://www.gradsummit.com
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,19 +31,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      # (optional) quick syntax check to catch indentation / typos early
+      # (optional) quick syntax check
       - name: Lint Python (compile)
         run: python3 -m py_compile tools/inject_nav.py tools/emit_pretty_urls.py tools/generate_sitemap.py
 
-      # NEW: inject shared nav into all HTML (adds "AI Tools Directory" etc.)
+      # NEW: inject shared nav (adds "AI Tools Directory" and fixes brand link)
       - name: Inject shared nav
         run: python3 tools/inject_nav.py
 
-      # Emit pretty URLs after nav is injected
       - name: Emit pretty URLs (index.html folders + redirect stubs)
         run: python3 tools/emit_pretty_urls.py
 
-      # Build sitemap from the emitted pretty pages
       - name: Generate sitemap.xml (pretty URLs)
         run: python3 tools/generate_sitemap.py
 
