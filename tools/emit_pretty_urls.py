@@ -188,6 +188,37 @@ def main():
         p.write_text(REDIRECT_STUB.format(to=pretty_url), encoding="utf-8")
 
         changed.append((p.relative_to(ROOT).as_posix(), pretty_index.relative_to(ROOT).as_posix()))
+                changed.append((p.relative_to(ROOT).as_posix(), pretty_index.relative_to(ROOT).as_posix()))
+
+        # >>> NEW: make root index.html links pretty (no client redirects needed)
+        root_index = ROOT / "index.html"
+        if root_index.exists():
+            s = root_index.read_text(encoding="utf-8", errors="ignore")
+            # /index.html -> /
+            s = re.sub(
+                r'href=(["\'])/index\.html(#[^"\']*)?\1',
+                lambda m: f'href={m.group(1)}/{m.group(2) or ""}{m.group(1)}',
+                s, flags=re.I
+            )
+            # /foo.html -> /foo/
+            s = re.sub(
+                r'href=(["\'])/([^"\']+?)\.html(#[^"\']*)?\1',
+                lambda m: f'href={m.group(1)}/{m.group(2)}/{m.group(3) or ""}{m.group(1)}',
+                s, flags=re.I
+            )
+            # relative .html on the homepage -> pretty (optional)
+            s = re.sub(
+                r'href=(["\'])(?!https?:|mailto:|tel:|#|/)([^"\']+?)\.html(#[^"\']*)?\1',
+                lambda m: f'href={m.group(1)}/{m.group(2)}/{m.group(3) or ""}{m.group(1)}',
+                s, flags=re.I
+            )
+            root_index.write_text(s, encoding="utf-8")
+        # <<< END NEW
+    
+        print(f"Emitted {len(changed)} pretty pages and redirect stubs:")
+        for old, new in changed:
+            print(f"  {old} -> {new}")
+
 
     print(f"Emitted {len(changed)} pretty pages and redirect stubs:")
     for old, new in changed:
