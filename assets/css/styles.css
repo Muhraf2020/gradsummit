@@ -387,3 +387,76 @@ footer{margin:2rem 0 1rem; text-align:center; color:var(--muted)}
 }
 .profile-extras .edu-badge svg{ opacity:.85; }
 
+/* Tools & Apps Banner */
+.tools-banner {
+  margin: 1.25rem 0 1.75rem;
+}
+
+.tools-banner-link {
+  display: block;
+  text-decoration: none;
+  color: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+}
+
+.tools-banner-link:hover {
+  filter: brightness(1.03);
+}
+
+.tools-banner-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: .75rem 1rem; /* thin banner */
+}
+
+.tools-banner-icon {
+  font-size: 1.25rem;
+  flex: 0 0 auto;
+}
+
+.tools-banner-text {
+  text-align: left;
+  flex: 1 1 auto;
+  line-height: 1.25;
+}
+
+.tools-banner-text strong {
+  display: block;
+  font-size: 1.02rem;
+  margin-bottom: .15rem;
+}
+
+.tools-banner-text span {
+  display: block;
+  font-size: .92rem;
+  opacity: 0.95;
+}
+
+.tools-banner-arrow {
+  font-size: 1.4rem;
+  flex: 0 0 auto;
+  transition: transform .2s ease;
+}
+
+.tools-banner-link:hover .tools-banner-arrow {
+  transform: translateX(4px);
+}
+
+@media (max-width: 768px) {
+  .tools-banner-content {
+    flex-direction: column;
+    text-align: center;
+  }
+  .tools-banner-text {
+    text-align: center;
+  }
+  .tools-banner-arrow {
+    display: none;
+  }
+}
